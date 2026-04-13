@@ -1,0 +1,60 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  documents    Document[]
+
+  @@map("users")
+}
+
+model Document {
+  id          String   @id @default(uuid())
+  title       String
+  shareToken  String   @unique @default(uuid()) @map("share_token")
+  isPublic    Boolean  @default(false) @map("is_public")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  blocks      Block[]
+
+  @@index([userId])
+  @@index([shareToken])
+  @@map("documents")
+}
+
+model Block {
+  id          String   @id @default(uuid())
+  type        String
+  content     Json
+  orderIndex  Float    @map("order_index")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  parentId    String?
+  parent      Block?   @relation("BlockChildren", fields: [parentId], references: [id])
+  children    Block[]  @relation("BlockChildren")
+
+  @@index([documentId])
+  @@index([documentId, orderIndex])
+  @@index([parentId])
+  @@map("blocks")
+}

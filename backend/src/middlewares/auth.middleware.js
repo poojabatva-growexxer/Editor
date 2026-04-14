@@ -5,9 +5,8 @@ import { sendError } from "../utils/response.js";
  * Protects routes — attaches req.userId if the Bearer token is valid.
  */
 export function requireAuth(req, res, next) {
-  const header = req.cookies?.accessToken;
-
-  if(!header){
+  const token = req.cookies?.accessToken;
+  if(!token){
     return sendError(res, "Access token is missing.", 401);
   }
 

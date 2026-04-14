@@ -12,70 +12,71 @@ block id, document_id, type, content (JSON), order_index (FLOAT), parent_id, cre
 this data model.
 
 **What it generated:**
-```prisma
-generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model User {
-  id           String     @id @default(uuid())
-  email        String     @unique
-  passwordHash String     @map("password_hash")
-  createdAt    DateTime   @default(now()) @map("created_at")
-
-  documents    Document[]
-
-  @@map("users")
-}
-
-model Document {
-  id          String   @id @default(uuid())
-  title       String
-  shareToken  String   @unique @default(uuid()) @map("share_token")
-  isPublic    Boolean  @default(false) @map("is_public")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  blocks      Block[]
-
-  @@index([userId])
-  @@index([shareToken])
-  @@map("documents")
-}
-
-model Block {
-  id          String   @id @default(uuid())
-  type        String
-  content     Json
-  orderIndex  Float    @map("order_index")
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  documentId  String
-  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-
-  parentId    String?
-  parent      Block?   @relation("BlockChildren", fields: [parentId], references: [id])
-  children    Block[]  @relation("BlockChildren")
-
-  @@index([documentId])
-  @@index([documentId, orderIndex])
-  @@index([parentId])
-  @@map("blocks")
-}
-```
+- prisma/schema.prisma file
 
 **What was wrong or missing:**
 - Nothing
 
 **What I changed and why:**
 - I used the generated schema as-is, no changes needed.
+
+
+## 2026-04-14
+
+**Tool:** Claude
+
+**What I asked for:**
+- You need to implement auth feature 
+Register with email + password (min 8 chars, at least 1 number)
+Login, JWT with refresh token
+
+**What it generated:**
+- controllers/auth.controller.js
+- middlewares/auth.middleware.js
+- middlewares/error.middleware.js
+- routes/auth.routes.js
+- routes/index.js
+- utils/password.js
+- utils/response.js
+- utils/token.js
+
+**What was wrong or missing:**
+- it uses authorization header for token which is less secure.
+- no email validation
+
+**What I changed and why:**
+- instead of authorization header I use cookie for more security
+- add utils/email.js for email formate validation
+
+## YYYY-MM-DD
+
+**Tool:** Claude / Copilot / Cursor / ChatGPT / other
+
+**What I asked for:**
+...
+
+**What it generated:**
+...
+
+**What was wrong or missing:**
+...
+
+**What I changed and why:**
+...
+## YYYY-MM-DD
+
+**Tool:** Claude / Copilot / Cursor / ChatGPT / other
+
+**What I asked for:**
+...
+
+**What it generated:**
+...
+
+**What was wrong or missing:**
+...
+
+**What I changed and why:**
 ...
 ## YYYY-MM-DD
 

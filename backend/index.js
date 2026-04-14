@@ -4,15 +4,24 @@ import {prisma} from './lib/prisma.js';
 
 const PORT = process.env.PORT || 3000;
 
-app.get('/health', async (req, res) => {
+async function start() {
   try {
-    await prisma.$queryRaw`SELECT 1`
-    res.json({ status: 'ok', db: 'connected' })
+    await prisma.$connect();
+    console.log("✓ Database connected");
+ 
+    app.listen(PORT, () => {
+      console.log(`✓ Server running on http://localhost:${PORT}`);
+      console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message })
+    console.error("✗ Failed to start server:", err);
+    process.exit(1);
   }
-})
-
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+}
+ 
+process.on("SIGTERM", async () => {
+  await prisma.$disconnect();
+  process.exit(0);
 });
+ 
+start();

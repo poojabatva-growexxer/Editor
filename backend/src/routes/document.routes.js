@@ -5,6 +5,7 @@ import {
   createDocument,
   renameDocument,
   deleteDocument,
+  toggleDocumentSharing,
 } from "../controllers/document.controller.js";
 
 const router = Router();
@@ -20,6 +21,9 @@ router.post("/", createDocument);
 
 // PATCH  /documents/:id    → rename document
 router.patch("/:id", renameDocument);
+
+// PATCH  /documents/:id/share → toggle sharing
+router.patch("/:id/share", toggleDocumentSharing);
 
 // DELETE /documents/:id    → delete document
 router.delete("/:id", deleteDocument);

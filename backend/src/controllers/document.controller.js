@@ -7,7 +7,7 @@ export async function listDocuments(req, res, next) {
   try {
     const documents = await prisma.document.findMany({
       where: { userId: req.userId },
-      select: { id: true, title: true, isPublic: true, updatedAt: true },
+      select: { id: true, title: true, isPublic: true, shareToken: true, updatedAt: true },
       orderBy: { updatedAt: "desc" },
     });
 

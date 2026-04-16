@@ -30,10 +30,10 @@ async function issueTokenPair(userId) {
 }
 
 // Define cookie options once, reuse for all auth-related cookies
-const Options = {
+const cookieOptions = {
   httpOnly: true,
-  secure: true,
-  sameSite: "strict",
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
 };
 
 // ── register ───────────────────────────────────────────────────────────────
@@ -63,8 +63,8 @@ export async function register(req, res, next) {
 
     const tokens = await issueTokenPair(user.id);
 
-    res.cookie("refreshToken", tokens.refreshToken, Options);
-    res.cookie("accessToken", tokens.accessToken, Options);
+    res.cookie("refreshToken", tokens.refreshToken, cookieOptions);
+    res.cookie("accessToken", tokens.accessToken, cookieOptions);
 
     return sendSuccess(res, { user }, 201);
   } catch (err) {
@@ -94,8 +94,8 @@ export async function login(req, res, next) {
 
     const tokens = await issueTokenPair(user.id);
 
-    res.cookie("refreshToken", tokens.refreshToken, Options);
-    res.cookie("accessToken", tokens.accessToken, Options);
+    res.cookie("refreshToken", tokens.refreshToken, cookieOptions);
+    res.cookie("accessToken", tokens.accessToken, cookieOptions);
 
     return sendSuccess(
       res,
@@ -113,7 +113,7 @@ export async function login(req, res, next) {
 
 export async function refresh(req, res, next) {
   try {
-    const  refreshToken  = req.cookies?.refreshToken;
+    const refreshToken = req.cookies?.refreshToken;
 
     if (!refreshToken) {
       return sendError(res, "Refresh token is required.", 400);
@@ -137,8 +137,8 @@ export async function refresh(req, res, next) {
 
     const tokens = await issueTokenPair(stored.userId);
 
-    res.cookie("refreshToken", tokens.refreshToken, Options);
-    res.cookie("accessToken", tokens.accessToken, Options);
+    res.cookie("refreshToken", tokens.refreshToken, cookieOptions);
+    res.cookie("accessToken", tokens.accessToken, cookieOptions);
 
     return sendSuccess(res, null, 200);
   } catch (err) {
@@ -150,13 +150,13 @@ export async function refresh(req, res, next) {
 
 export async function logout(req, res, next) {
   try {
-    const  refreshToken  = req.cookies?.refreshToken;
+    const refreshToken = req.cookies?.refreshToken;
 
     if (refreshToken) {
       await prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
     }
-    res.clearCookie("refreshToken", Options);
-    res.clearCookie("accessToken", Options);
+    res.clearCookie("refreshToken", cookieOptions);
+    res.clearCookie("accessToken", cookieOptions);
     return sendSuccess(res, null, 200);
   } catch (err) {
     next(err);

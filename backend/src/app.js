@@ -1,10 +1,13 @@
 import express from "express";
+import cors from "cors";
 import cookieParser from "cookie-parser";
 import router from "./routes/index.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
+const CLIENT_ORIGIN = process.env.CLIENT_URL || "http://localhost:5173";
 
+app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());

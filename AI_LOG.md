@@ -83,21 +83,234 @@ For every significant AI interaction, write an entry:
 
 - i change afterblock orderIndex so any index not repeat first its just +0.5 but i add avg(nextSibling.orderIndex,original.orderIndex)
 
-## YYYY-MM-DD
+## 2026-04-16
 
-**Tool:** Claude / Copilot / Cursor / ChatGPT / other
+**Tool:** Claude + Copilot + codex 
 
 **What I asked for:**
-...
+- ### **General Setup**
+- **Base URL**: `http://localhost:8080/api/v1` (adjust for production)
+- **Authentication**: JWT 
+- **Content-Type**: `application/json` for requests
+- **CORS**: Enabled for frontend origin
+- **Errors**: Standard JSON `{ success: false, error: "message" }` with HTTP status codes
+- **Tokens**: Store `accessToken` in cookies; use `refreshToken` for renewal
+- **Block Types**: `"paragraph"`, `"heading_1"`, `"heading_2"`, `"divider"`, `"code"`, `"image"`, `"to_do"`
+- **Content Format**: JSON object (e.g., `{ text: "..." }` for text, `{ url: "...", alt: "..." }` for images)
+
+---
+
+### **Authentication Endpoints**
+
+#### **POST /auth/register**
+- **Auth Required**: No
+- **Request Body**:
+  ```json
+  {
+    "email": "user@example.com",
+    "password": "securepass"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "user": { "id": "uuid", "email": "user@example.com" },
+      "tokens": {
+        "accessToken": "jwt...",
+        "refreshToken": "jwt..."
+      }
+    }
+  }
+  ```
+- **Errors**: 400 (invalid data), 409 (email exists)
+
+#### **POST /auth/login**
+- **Auth Required**: No
+- **Request Body**: Same as register
+- **Response**: Same as register
+- **Errors**: 401 (invalid credentials)
+
+#### **POST /auth/refresh**
+- **Auth Required**: No (send refreshToken)
+- **Request Body**:
+  ```json
+  { "refreshToken": "jwt..." }
+  ```
+- **Response**: New tokens object
+- **Errors**: 401 (invalid token)
+
+#### **POST /auth/logout**
+- **Auth Required**: Yes
+- **Request Body**: None (blacklists refreshToken)
+- **Response**: `{ success: true }`
+
+---
+
+### **Document Endpoints**
+
+#### **GET /documents**
+- **Auth Required**: Yes
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "documents": [
+        {
+          "id": "uuid",
+          "title": "My Doc",
+          "isPublic": false,
+          "updatedAt": "2026-04-15T..."
+        }
+      ]
+    }
+  }
+  ```
+
+#### **POST /documents**
+- **Auth Required**: Yes
+- **Request Body**:
+  ```json
+  { "title": "New Document" }
+  ```
+- **Response**: Document object (same as list item)
+
+#### **PATCH /documents/:id**
+- **Auth Required**: Yes
+- **Request Body**:
+  ```json
+  { "title": "Updated Title" }
+  ```
+- **Response**: Updated document object
+
+#### **PATCH /documents/:id/share**
+- **Auth Required**: Yes
+- **Request Body**:
+  ```json
+  { "isPublic": true }
+  ```
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "document": {
+        "id": "uuid",
+        "title": "...",
+        "isPublic": true,
+        "shareToken": "uuid-for-link"
+      }
+    }
+  }
+  ```
+- **Notes**: Use `shareToken` to build public link: `/share/:token`
+
+#### **DELETE /documents/:id**
+- **Auth Required**: Yes
+- **Response**: `{ success: true }`
+
+---
+
+### **Block Endpoints**
+
+#### **GET /documents/:documentId/blocks**
+- **Auth Required**: Yes
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "blocks": [
+        {
+          "id": "uuid",
+          "type": "paragraph",
+          "content": { "text": "Hello" },
+          "orderIndex": 1.0,
+          "parentId": null
+        }
+      ]
+    }
+  }
+  ```
+- **Notes**: Blocks ordered by `orderIndex` (Float). Supports hierarchy via `parentId`.
+
+#### **POST /documents/:documentId/blocks**
+- **Auth Required**: Yes
+- **Request Body**:
+  ```json
+  {
+    "type": "paragraph",
+    "content": { "text": "" },
+    "orderIndex": 2.5,  // Optional, defaults to max + 1
+    "parentId": null    // Optional
+  }
+  ```
+- **Response**: Created block object
+- **Notes**: `orderIndex` is Float; client can calculate or let server default.
+
+#### **PATCH /documents/:documentId/blocks/:blockId**
+- **Auth Required**: Yes
+- **Request Body**: Partial update (e.g., `{ "content": { "text": "Updated" } }`)
+- **Response**: Updated block object
+
+#### **DELETE /documents/:documentId/blocks/:blockId**
+- **Auth Required**: Yes
+- **Response**: `{ success: true, data: { deleted: "uuid" } }`
+
+#### **POST /documents/:documentId/blocks/:blockId/split**
+- **Auth Required**: Yes
+- **Request Body**:
+  ```json
+  {
+    "beforeContent": { "text": "First part" },
+    "afterContent": { "text": "Second part" }
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "original": { ... },
+      "created": { ... }
+    }
+  }
+  ```
+- **Notes**: New block gets `orderIndex = original + 0.5`
+
+#### **PATCH /documents/:documentId/blocks/:blockId/move**
+- **Auth Required**: Yes
+- **Request Body**:
+  ```json
+  {
+    "newPosition": 2,  // 1-based index within parent
+    "newParentId": "uuid"  // Optional
+  }
+  ```
+- **Response**: Updated block object
+- **Notes**: Server calculates `orderIndex` as average of prev/next siblings.
+
+---
+
+### **Public Share Endpoint**
+
+#### **GET /share/:token**
+- **Auth Required**: No
+- **Response**: Same as GET /documents/:id/blocks but read-only
+- **Errors**: 404 if invalid token or sharing disabled
+
+- use this endpoint and generate editor frontend in React + Tailwind^4
 
 **What it generated:**
-...
+- it generate whole frontend 
 
 **What was wrong or missing:**
-...
+- style
 
 **What I changed and why:**
-...
+- dark/light mode not working . there are some style flows. change css
 
 ## YYYY-MM-DD
 

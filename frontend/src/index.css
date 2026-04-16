@@ -1,1 +1,49 @@
 @import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap");
+
+@theme {
+  --font-sans: "DM Sans", sans-serif;
+  --font-mono: "DM Mono", monospace;
+  --color-brand: #000000;
+  --color-brand-inverse: #ffffff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
+.dark ::-webkit-scrollbar-thumb { background: #374151; }
+
+[contenteditable] { outline: none; caret-color: currentColor; }
+[contenteditable]:empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+}
+.dark [contenteditable]:empty::before { color: #4b5563; }
+
+.block-drag-handle { opacity: 0; transition: opacity 0.15s ease; }
+.block-wrapper:hover .block-drag-handle { opacity: 1; }
+
+@keyframes savePulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.drop-above { border-top:    2px solid #000 !important; }
+.drop-below { border-bottom: 2px solid #000 !important; }
+.dark .drop-above { border-top-color:    #fff !important; }
+.dark .drop-below { border-bottom-color: #fff !important; }
+
+.toolbar-enter { animation: toolbarIn 0.1s ease-out; }
+@keyframes toolbarIn {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)  scale(1); }
+}

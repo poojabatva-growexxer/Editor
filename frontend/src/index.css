@@ -8,6 +8,14 @@
   --color-brand-inverse: #ffffff;
 }
 
+/* Enable class-based dark mode for Tailwind v4 */
+@variant dark (&:where(.dark, .dark *));
+
+/* Fix native elements (select, option) in dark mode */
+html.dark {
+  color-scheme: dark;
+}
+
 * { box-sizing: border-box; }
 
 body {

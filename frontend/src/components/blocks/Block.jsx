@@ -13,12 +13,47 @@ const BLOCK_TYPES = [
 
 const TEXT_TOOL_TYPES = new Set(['paragraph', 'heading_1', 'heading_2'])
 const TEXT_ALIGNMENTS = ['left', 'center', 'right']
-const IMAGE_WIDTH_PRESETS = [
-  { label: 'S', value: 40 },
-  { label: 'M', value: 70 },
-  { label: 'L', value: 100 },
-]
 const HIGHLIGHT_COLOR = '#fef08a'
+
+// Build an array of character-level format objects from a spans array
+function buildCharFormats(text, spans) {
+  const formats = Array.from({ length: text.length }, () => ({}))
+  if (!Array.isArray(spans)) return formats
+  for (const span of spans) {
+    const s = Math.max(0, span.start)
+    const e = Math.min(text.length, span.end)
+    for (let i = s; i < e; i++) {
+      if (span.bold !== undefined) formats[i].bold = span.bold
+      if (span.italic !== undefined) formats[i].italic = span.italic
+      if (span.underline !== undefined) formats[i].underline = span.underline
+      if (span.highlight !== undefined) formats[i].highlight = span.highlight
+    }
+  }
+  return formats
+}
+
+// Collapse adjacent chars with identical formatting into runs
+function buildRuns(text, spans) {
+  if (!text) return [{ text: '', bold: false, italic: false, underline: false, highlight: false }]
+  const charFmts = buildCharFormats(text, spans)
+  const runs = []
+  let cur = null
+  for (let i = 0; i < text.length; i++) {
+    const f = charFmts[i]
+    if (
+      !cur ||
+      Boolean(f.bold) !== cur.bold ||
+      Boolean(f.italic) !== cur.italic ||
+      Boolean(f.underline) !== cur.underline ||
+      Boolean(f.highlight) !== cur.highlight
+    ) {
+      cur = { text: '', bold: Boolean(f.bold), italic: Boolean(f.italic), underline: Boolean(f.underline), highlight: Boolean(f.highlight) }
+      runs.push(cur)
+    }
+    cur.text += text[i]
+  }
+  return runs
+}
 
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -230,12 +265,15 @@ export function Block({
   onMove,
 }) {
   const inputRef = useRef(null)
+  const imageRef = useRef(null)
   const imageResizeRailRef = useRef(null)
   const resizeCleanupRef = useRef(null)
   const pendingCursorRef = useRef(null)
+  const selectionRef = useRef({ start: 0, end: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
+  const [resizingWidth, setResizingWidth] = useState(null)
 
   const textValue = getTextValue(block.type, block.content)
   const checked = getChecked(block.content)
@@ -313,20 +351,58 @@ export function Block({
     }
   }
 
-  const handleTypeSelection = async (nextType) => {
+  const handleTypeSelection = async (nextType, fromCommandMenu = false) => {
     closeCommandMenu()
 
-    if (isEmptyBlock && !commandMenuOpen) {
+    // Only create a new block when triggered from the command menu with an empty block
+    if (fromCommandMenu && isEmptyBlock) {
       const created = await onCreate(block.id, index, nextType)
       if (created?.id) setFocusBlockId(created.id)
       return
     }
 
+    // Otherwise always convert the current block in-place
     await onChangeType(block.id, nextType)
   }
 
+  // Track textarea selection so tools can apply to selected range only
+  const handleSelectionChange = () => {
+    if (inputRef.current) {
+      selectionRef.current = {
+        start: inputRef.current.selectionStart ?? 0,
+        end: inputRef.current.selectionEnd ?? 0,
+      }
+    }
+  }
+
+  // Apply an inline formatting toggle to the selected text range only.
+  // We store range-based spans in content.spans: [{ start, end, bold?, italic?, underline?, highlight? }]
+  const applyRangeFormat = (key, value) => {
+    const { start, end } = selectionRef.current
+    if (start === end) {
+      // No selection — toggle whole-block formatting as before
+      updateCurrentBlockPatch({ [key]: !formatting[key] })
+      return
+    }
+    const base = isRecord(block.content) ? block.content : {}
+    const spans = Array.isArray(base.spans) ? [...base.spans] : []
+    // Remove any existing span that exactly covers this range for the same key
+    const existing = spans.find((s) => s.start === start && s.end === end)
+    if (existing) {
+      existing[key] = !existing[key]
+    } else {
+      spans.push({ start, end, [key]: value })
+    }
+    updateCurrentBlockPatch({ spans })
+  }
+
   const toggleTextOption = (key) => {
-    updateCurrentBlockPatch({ [key]: !formatting[key] })
+    const { start, end } = selectionRef.current
+    if (start !== end && inputRef.current) {
+      applyRangeFormat(key, !formatting[key])
+    } else {
+      updateCurrentBlockPatch({ [key]: !formatting[key] })
+    }
   }
 
   const setTextAlignment = (align) => {
@@ -334,13 +410,20 @@ export function Block({
   }
 
   const toggleHighlight = () => {
-    updateCurrentBlockPatch({
-      highlightColor: formatting.highlightColor === 'yellow' ? undefined : 'yellow',
-    })
+    const { start, end } = selectionRef.current
+    if (start !== end && inputRef.current) {
+      applyRangeFormat('highlight', formatting.highlightColor !== 'yellow')
+    } else {
+      updateCurrentBlockPatch({
+        highlightColor: formatting.highlightColor === 'yellow' ? undefined : 'yellow',
+      })
+    }
   }
 
   const setImageWidth = (width) => {
-    updateCurrentBlockPatch({ width: Math.round(clamp(width, 25, 100)) })
+    const clamped = Math.round(clamp(width, 25, 100))
+    updateCurrentBlockPatch({ width: clamped })
+    return clamped
   }
 
   const startImageResize = (event) => {
@@ -349,14 +432,23 @@ export function Block({
     event.preventDefault()
     event.stopPropagation()
 
-    const bounds = imageResizeRailRef.current.getBoundingClientRect()
+    // Use the rail (full available width) as the reference for percentage calc
+    const railBounds = imageResizeRailRef.current.getBoundingClientRect()
+    // Snapshot the image left edge so we resize from image origin
+    const imgLeft = railBounds.left
 
     const handlePointerMove = (moveEvent) => {
-      const nextWidth = ((moveEvent.clientX - bounds.left) / bounds.width) * 100
-      setImageWidth(nextWidth)
+      const rawWidth = ((moveEvent.clientX - imgLeft) / railBounds.width) * 100
+      const clamped = Math.round(clamp(rawWidth, 25, 100))
+      setResizingWidth(clamped)
     }
 
     const cleanup = () => {
+      // Commit the final width on pointer up
+      setResizingWidth((prev) => {
+        if (prev !== null) setImageWidth(prev)
+        return null
+      })
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', cleanup)
       resizeCleanupRef.current = null
@@ -411,7 +503,7 @@ export function Block({
       if (event.key === 'Enter' || event.key === 'NumpadEnter') {
         event.preventDefault()
         if (matchingBlockTypes.length > 0) {
-          await handleTypeSelection(matchingBlockTypes[0].value)
+          await handleTypeSelection(matchingBlockTypes[0].value, true)
         }
         return
       }
@@ -451,7 +543,29 @@ export function Block({
       return
     }
 
+    // code: let Enter insert a newline naturally
     if (block.type === 'code') return
+
+    // to_do: Enter creates a new to_do block below (Notion-style)
+    if (block.type === 'to_do') {
+      event.preventDefault()
+      const cursor = event.currentTarget.selectionStart ?? textValue.length
+      const beforeText = textValue.slice(0, cursor)
+      const afterText = textValue.slice(cursor)
+      // Update current block with text before cursor
+      updateCurrentBlock(buildContent(block.type, block.content, beforeText))
+      // Create new to_do block with text after cursor
+      const created = await onSplit(
+        block.id,
+        buildContent(block.type, block.content, beforeText),
+        buildContent('to_do', { text: '', checked: false }, afterText),
+      )
+      if (created?.id) {
+        pendingCursorRef.current = { blockId: created.id, position: 0 }
+        setFocusBlockId(created.id)
+      }
+      return
+    }
 
     event.preventDefault()
     const cursor = event.currentTarget.selectionStart ?? textValue.length
@@ -521,18 +635,10 @@ export function Block({
     }
 
     if (block.type === 'image') {
+      const displayWidth = resizingWidth !== null ? resizingWidth : imageWidth
       return (
         <div className="flex items-center gap-1 rounded-xl border border-gray-200 bg-white/90 p-1 shadow-sm dark:border-gray-800 dark:bg-black/90">
-          {IMAGE_WIDTH_PRESETS.map((preset) => (
-            <ToolbarButton
-              key={preset.value}
-              title={`Set width to ${preset.value}%`}
-              active={Math.abs(imageWidth - preset.value) < 5}
-              onClick={() => setImageWidth(preset.value)}
-            >
-              {preset.label}
-            </ToolbarButton>
-          ))}
+          <span className="px-1 text-xs text-gray-400 dark:text-gray-500">Drag corner to resize &bull; {displayWidth}%</span>
         </div>
       )
     }
@@ -625,18 +731,26 @@ export function Block({
           />
 
           {textValue ? (
-            <div ref={imageResizeRailRef} className="relative w-full">
-              <div style={{ width: `${imageWidth}%` }} className="relative">
+            <div ref={imageResizeRailRef} className="relative w-full select-none">
+              <div style={{ width: `${resizingWidth !== null ? resizingWidth : imageWidth}%` }} className="relative">
                 <img
+                  ref={imageRef}
                   src={textValue}
                   alt=""
                   className="max-h-112 w-full rounded-2xl border border-gray-200 object-cover dark:border-gray-800"
+                  draggable={false}
                 />
+                {/* Live width tooltip while dragging */}
+                {resizingWidth !== null && (
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-black/70 px-2 py-1 text-xs text-white pointer-events-none">
+                    {resizingWidth}%
+                  </div>
+                )}
                 <button
                   type="button"
-                  title="Resize image"
+                  title="Drag to resize image"
                   onPointerDown={startImageResize}
-                  className="absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-500 shadow-sm transition-colors hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:bg-black/90 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-white"
+                  className="absolute bottom-3 right-3 inline-flex h-8 w-8 cursor-ew-resize items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-500 shadow-sm transition-colors hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:bg-black/90 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-white"
                 >
                   <ResizeIcon />
                 </button>
@@ -669,12 +783,20 @@ export function Block({
             onChange={(event) => handleChange(event.target.value)}
             onBlur={handleInputBlur}
             onKeyDown={handleKeyDown}
+            onSelect={handleSelectionChange}
+            onMouseUp={handleSelectionChange}
+            onKeyUp={handleSelectionChange}
             placeholder={getBlockPlaceholder(block.type)}
             className={getTextClassName(block.type, checked)}
           />
         </label>
       )
     } else {
+      // For text block types that support rich formatting, render a rich overlay
+      // The textarea handles input; a positioned overlay renders formatted spans.
+      const hasSpans = TEXT_TOOL_TYPES.has(block.type) && Array.isArray(block.content?.spans) && block.content.spans.length > 0
+      const runs = hasSpans ? buildRuns(textValue, block.content.spans) : null
+
       inputElement = (
         <div className="relative">
           <textarea
@@ -684,10 +806,36 @@ export function Block({
             onChange={(event) => handleChange(event.target.value)}
             onBlur={handleInputBlur}
             onKeyDown={handleKeyDown}
+            onSelect={handleSelectionChange}
+            onMouseUp={handleSelectionChange}
+            onKeyUp={handleSelectionChange}
             placeholder={getBlockPlaceholder(block.type)}
-            className={getTextClassName(block.type, checked)}
+            className={`${getTextClassName(block.type, checked)} ${hasSpans ? 'caret-black dark:caret-white text-transparent dark:text-transparent selection:bg-blue-200 dark:selection:bg-blue-800' : ''}`}
             style={textStyle}
           />
+          {/* Rich-text overlay — visible only when spans exist; sits above the transparent textarea text */}
+          {hasSpans && runs && (
+            <div
+              aria-hidden
+              className={`pointer-events-none absolute inset-0 whitespace-pre-wrap break-words ${getTextClassName(block.type, checked)}`}
+              style={{ ...textStyle, color: undefined, backgroundColor: undefined }}
+            >
+              {runs.map((run, i) => (
+                <span
+                  key={i}
+                  style={{
+                    fontWeight: run.bold ? (block.type === 'heading_2' ? 600 : 700) : (textStyle?.fontWeight ?? 400),
+                    fontStyle: run.italic ? 'italic' : (textStyle?.fontStyle ?? 'normal'),
+                    textDecoration: run.underline ? 'underline' : 'none',
+                    backgroundColor: run.highlight ? HIGHLIGHT_COLOR : 'transparent',
+                    color: run.highlight ? '#111827' : 'inherit',
+                  }}
+                >
+                  {run.text}
+                </span>
+              ))}
+            </div>
+          )}
           {block.type === 'code' && textValue && (
             <button
               type="button"
@@ -777,7 +925,8 @@ export function Block({
               <select
                 value={block.type}
                 onChange={(event) => {
-                  void handleTypeSelection(event.target.value)
+                  // fromCommandMenu=false → always convert in-place, never create a new block
+                  void handleTypeSelection(event.target.value, false)
                 }}
                 className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 outline-none transition-colors hover:border-gray-300 focus:border-black dark:border-gray-800 dark:bg-black dark:text-gray-300 dark:hover:border-gray-700 dark:focus:border-white"
               >

@@ -312,20 +312,24 @@ For every significant AI interaction, write an entry:
 **What I changed and why:**
 - dark/light mode not working . there are some style flows. change css
 
-## YYYY-MM-DD
+## YYYY-MM-17
 
-**Tool:** Claude / Copilot / Cursor / ChatGPT / other
+**Tool:** Claude / Copilot / Antigravity / ChatGPT 
 
 **What I asked for:**
-...
+Add toolbar for block types
+paragraph & heading - bold, italic, underline, highlight, alignment
+code - right-top copy icon
+image - resizable 
 
 **What it generated:**
-...
+it modify in existing files
 
 **What was wrong or missing:**
-...
+if we select and apply bold it apply on whole block not on selected text
 
 **What I changed and why:**
+
 ...
 Minimum: one entry per working day.
 Required entries:

@@ -15,6 +15,11 @@ function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function canMergeBlocks(type1, type2) {
+  // Blocks can merge if they are the same type
+  return type1 === type2
+}
+
 function getTextValue(type, content) {
   if (typeof content === 'string') return content
   if (!isRecord(content)) return ''
@@ -73,6 +78,7 @@ function getMatchingBlockTypes(query) {
 export function Block({
   block,
   index,
+  previousBlock,
   readOnly = false,
   focusBlockId,
   setFocusBlockId,
@@ -87,6 +93,7 @@ export function Block({
   const [isDragging, setIsDragging] = useState(false)
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
+  const pendingCursorRef = useRef(null)
   const textValue = getTextValue(block.type, block.content)
   const checked = getChecked(block.content)
   const isEmptyBlock = textValue.trim().length === 0
@@ -99,12 +106,20 @@ export function Block({
     inputRef.current.focus()
 
     if (typeof inputRef.current.setSelectionRange === 'function') {
-      const end = inputRef.current.value.length
-      inputRef.current.setSelectionRange(end, end)
+      // Check if we have a pending cursor position from merge/split
+      if (pendingCursorRef.current && pendingCursorRef.current.blockId === block.id) {
+        const position = pendingCursorRef.current.position
+        inputRef.current.setSelectionRange(position, position)
+        pendingCursorRef.current = null
+      } else {
+        // Default behavior: cursor at end
+        const end = inputRef.current.value.length
+        inputRef.current.setSelectionRange(end, end)
+      }
     }
 
     setFocusBlockId(null)
-  }, [block.id, focusBlockId, readOnly, setFocusBlockId, displayValue.length])
+  }, [block.id, focusBlockId, readOnly, setFocusBlockId])
 
   useEffect(() => {
     if (block.type === 'divider' || block.type === 'image' || readOnly) return
@@ -200,6 +215,26 @@ export function Block({
       return
     }
 
+    // Handle merging with previous block when backspace at start of non-empty block
+    if (event.key === 'Backspace' && event.currentTarget.selectionStart === 0 && textValue.length > 0 && previousBlock && canMergeBlocks(block.type, previousBlock.type)) {
+      event.preventDefault()
+      
+      // Merge current block content into previous block
+      const previousText = getTextValue(previousBlock.type, previousBlock.content)
+      const mergedText = previousText + textValue
+      
+      // Update previous block with merged content
+      onUpdate(previousBlock.id, buildContent(previousBlock.type, previousBlock.content, mergedText))
+      
+      // Store cursor position for after merge
+      pendingCursorRef.current = { blockId: previousBlock.id, position: previousText.length }
+      
+      // Delete current block
+      await onDelete(block.id, index)
+      
+      return
+    }
+
     if (event.key !== 'Enter' || event.shiftKey) return
 
     if (block.type === 'divider' || block.type === 'image') {
@@ -214,7 +249,7 @@ export function Block({
     event.preventDefault()
     const cursor = event.currentTarget.selectionStart ?? textValue.length
     const beforeText = textValue.slice(0, cursor)
-    const afterText = textValue.slice(cursor)
+    const afterText = textValue.slice(cursor).trimStart() // Trim leading whitespace
 
     const created = await onSplit(
       block.id,
@@ -222,7 +257,11 @@ export function Block({
       buildContent(block.type, block.content, afterText),
     )
 
-    if (created?.id) setFocusBlockId(created.id)
+    if (created?.id) {
+      // Set cursor position first, then focus the new block
+      pendingCursorRef.current = { blockId: created.id, position: 0 }
+      setFocusBlockId(created.id)
+    }
   }
 
   const renderReadOnly = () => {

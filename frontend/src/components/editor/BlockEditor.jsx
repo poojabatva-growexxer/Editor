@@ -163,6 +163,7 @@ export function BlockEditor({
               key={block.id}
               block={block}
               index={index}
+              previousBlock={blocks[index - 1]}
               focusBlockId={focusBlockId}
               setFocusBlockId={setFocusBlockId}
               onUpdate={updateBlockLocal}

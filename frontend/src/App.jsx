@@ -7,8 +7,9 @@ import { ProtectedRoute } from './components/layout/ProtectedRoute.jsx'
 import Login      from './pages/Login.jsx'
 import Register   from './pages/Register.jsx'
 import Dashboard  from './pages/Dashboard.jsx'
-import EditorPage from './pages/EditorPage.jsx'
-import ShareView  from './pages/ShareView.jsx'
+import EditorPage       from './pages/EditorPage.jsx'
+import ShareView        from './pages/ShareView.jsx'
+import SharedDocuments  from './pages/SharedDocuments.jsx'
 
 export default function App() {
   return (
@@ -28,6 +29,9 @@ export default function App() {
               } />
               <Route path="/doc/:id" element={
                 <ProtectedRoute><EditorPage /></ProtectedRoute>
+              } />
+              <Route path="/shared" element={
+                <ProtectedRoute><SharedDocuments /></ProtectedRoute>
               } />
 
               {/* Fallback */}

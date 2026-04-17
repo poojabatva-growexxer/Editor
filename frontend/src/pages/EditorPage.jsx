@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { BlockEditor } from '../components/editor/BlockEditor.jsx'
 import { Navbar } from '../components/layout/Navbar.jsx'
 import { Sidebar } from '../components/layout/Sidebar.jsx'
@@ -128,12 +128,12 @@ export default function EditorPage() {
             <button
               onClick={toggleShare}
               disabled={sharingBusy}
-              className={`relative w-10 h-6 rounded-full transition-colors duration-200 disabled:opacity-50 ${
-                shareData?.isPublic ? 'bg-black dark:bg-white' : 'bg-gray-200 dark:bg-gray-700'
+              className={`relative w-12 h-6 rounded-full transition-colors duration-300 disabled:opacity-50 flex-shrink-0 ${
+                shareData?.isPublic ? 'bg-green-500 dark:bg-green-600' : 'bg-gray-300 dark:bg-gray-600'
               }`}
             >
-              <span className={`absolute top-1 w-4 h-4 bg-white dark:bg-black rounded-full transition-transform duration-200 ${
-                shareData?.isPublic ? 'translate-x-5' : 'translate-x-1'
+              <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-all duration-300 pointer-events-none ${
+                shareData?.isPublic ? 'translate-x-6' : 'translate-x-0'
               }`} />
             </button>
           </div>
@@ -159,9 +159,20 @@ export default function EditorPage() {
             </div>
           )}
 
-          <Button variant="primary" className="w-full" onClick={() => setShareOpen(false)}>
-            Done
-          </Button>
+          <div className="flex items-center justify-between pt-1">
+            <Link
+              to="/shared"
+              onClick={() => setShareOpen(false)}
+              className="text-xs text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white transition-colors flex items-center gap-1"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+              View all shared docs
+            </Link>
+            <Button variant="primary" onClick={() => setShareOpen(false)}>Done</Button>
+          </div>
         </div>
       </Modal>
     </div>

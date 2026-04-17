@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
 const REFRESH_EXPIRES_MS =
-  process.env.JWT_REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000;
+  parseInt(process.env.JWT_REFRESH_EXPIRES_IN || 7) * 24 * 60 * 60 * 1000;
 
 /**
  * Signs a short-lived JWT access token (default: 15m).

@@ -48,6 +48,7 @@ export function BlockEditor({
 
   const hasSeededBlockRef = useRef(false)
   const committedTitleRef = useRef(initialTitle || 'Untitled')
+  const savingTitleRef = useRef(false)
 
   useEffect(() => {
     const nextTitle = initialTitle || 'Untitled'
@@ -70,22 +71,26 @@ export function BlockEditor({
   }, [blocks.length, createBlock, loading])
 
   const commitTitle = async () => {
+    if (savingTitleRef.current) return
+
     const nextTitle = title.trim() || 'Untitled'
     setTitle(nextTitle)
-    onTitleChange?.(nextTitle)
 
     if (nextTitle === committedTitleRef.current) return
 
     const previousTitle = committedTitleRef.current
+    savingTitleRef.current = true
     setTitleBusy(true)
 
     try {
       await saveTitle(nextTitle)
       committedTitleRef.current = nextTitle
+      onTitleChange?.(nextTitle)
     } catch {
       setTitle(previousTitle)
       onTitleChange?.(previousTitle)
     } finally {
+      savingTitleRef.current = false
       setTitleBusy(false)
     }
   }
@@ -132,14 +137,13 @@ export function BlockEditor({
         <input
           value={title}
           onChange={(event) => {
-            const nextTitle = event.target.value
-            setTitle(nextTitle)
-            onTitleChange?.(nextTitle || 'Untitled')
+            setTitle(event.target.value)
           }}
           onBlur={commitTitle}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' || event.key === 'NumpadEnter') {
               event.preventDefault()
+              void commitTitle()
               event.currentTarget.blur()
             }
           }}

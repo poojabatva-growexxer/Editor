@@ -182,7 +182,7 @@ export function Block({
           <img
             src={textValue}
             alt=""
-            className="max-h-[28rem] w-full rounded-2xl border border-gray-200 object-cover dark:border-gray-800"
+            className="max-h-112 w-full rounded-2xl border border-gray-200 object-cover dark:border-gray-800"
           />
         ) : (
           <p className="text-sm text-gray-400 dark:text-gray-500">No image URL provided.</p>
@@ -230,7 +230,7 @@ export function Block({
             <img
               src={textValue}
               alt=""
-              className="max-h-[28rem] w-full rounded-2xl border border-gray-200 object-cover dark:border-gray-800"
+              className="max-h-112 w-full rounded-2xl border border-gray-200 object-cover dark:border-gray-800"
             />
           ) : (
             <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-10 text-center text-sm text-gray-400 dark:border-gray-800 dark:text-gray-500">

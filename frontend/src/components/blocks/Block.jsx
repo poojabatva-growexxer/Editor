@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { getBlockPlaceholder } from '../../utils/helpers.js'
 
 const BLOCK_TYPES = [
-  { value: 'paragraph', label: 'Paragraph' },
-  { value: 'heading_1', label: 'Heading 1' },
-  { value: 'heading_2', label: 'Heading 2' },
-  { value: 'code', label: 'Code' },
-  { value: 'image', label: 'Image' },
-  { value: 'to_do', label: 'To-do' },
-  { value: 'divider', label: 'Divider' },
+  { value: 'paragraph', label: 'Paragraph', aliases: ['text', 'p'] },
+  { value: 'heading_1', label: 'Heading 1', aliases: ['h1', 'title'] },
+  { value: 'heading_2', label: 'Heading 2', aliases: ['h2', 'subtitle'] },
+  { value: 'code', label: 'Code', aliases: ['snippet', 'pre'] },
+  { value: 'image', label: 'Image', aliases: ['img', 'photo'] },
+  { value: 'to_do', label: 'To-do', aliases: ['todo', 'task', 'checklist'] },
+  { value: 'divider', label: 'Divider', aliases: ['line', 'hr', 'separator'] },
 ]
 
 function isRecord(value) {
@@ -59,6 +59,17 @@ function getTextClassName(type, checked) {
   }
 }
 
+function getMatchingBlockTypes(query) {
+  const normalizedQuery = query.trim().toLowerCase()
+
+  if (!normalizedQuery) return BLOCK_TYPES
+
+  return BLOCK_TYPES.filter(({ label, value, aliases = [] }) => {
+    const candidates = [label.toLowerCase(), value.toLowerCase(), ...aliases.map((alias) => alias.toLowerCase())]
+    return candidates.some((candidate) => candidate.includes(normalizedQuery))
+  })
+}
+
 export function Block({
   block,
   index,
@@ -78,6 +89,9 @@ export function Block({
   const [commandQuery, setCommandQuery] = useState('')
   const textValue = getTextValue(block.type, block.content)
   const checked = getChecked(block.content)
+  const isEmptyBlock = textValue.trim().length === 0
+  const displayValue = commandMenuOpen ? `/${commandQuery}` : textValue
+  const matchingBlockTypes = getMatchingBlockTypes(commandQuery)
 
   useEffect(() => {
     if (readOnly || focusBlockId !== block.id || !inputRef.current) return
@@ -90,45 +104,91 @@ export function Block({
     }
 
     setFocusBlockId(null)
-  }, [block.id, focusBlockId, readOnly, setFocusBlockId, textValue.length])
+  }, [block.id, focusBlockId, readOnly, setFocusBlockId, displayValue.length])
 
   useEffect(() => {
     if (block.type === 'divider' || block.type === 'image' || readOnly) return
     resizeTextarea(inputRef.current)
-  }, [block.type, readOnly, textValue])
+  }, [block.type, displayValue, readOnly])
+
+  const closeCommandMenu = () => {
+    setCommandMenuOpen(false)
+    setCommandQuery('')
+  }
+
+  const handleInputBlur = () => {
+    if (commandMenuOpen) closeCommandMenu()
+  }
 
   const handleChange = (nextText) => {
-    if (nextText.startsWith('/')) {
+    if (isEmptyBlock && nextText.startsWith('/')) {
       setCommandMenuOpen(true)
       setCommandQuery(nextText.slice(1))
-    } else {
-      setCommandMenuOpen(false)
-      onUpdate(block.id, buildContent(block.type, block.content, nextText))
+      return
     }
+
+    closeCommandMenu()
+    onUpdate(block.id, buildContent(block.type, block.content, nextText))
+  }
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(textValue)
+    } catch (error) {
+      console.error('Failed to copy text:', error)
+    }
+  }
+
+  const handleTypeSelection = async (nextType) => {
+    closeCommandMenu()
+
+    if (isEmptyBlock && !commandMenuOpen) {
+      const created = await onCreate(block.id, index, nextType)
+      if (created?.id) setFocusBlockId(created.id)
+      return
+    }
+
+    await onChangeType(block.id, nextType)
   }
 
   const handleKeyDown = async (event) => {
     if (readOnly) return
 
+    if (block.type === 'code' && event.key === 'Tab') {
+      event.preventDefault()
+      const textarea = event.currentTarget
+      const start = textarea.selectionStart ?? textValue.length
+      const end = textarea.selectionEnd ?? textValue.length
+      const spaces = '  '
+      const nextText = `${textValue.slice(0, start)}${spaces}${textValue.slice(end)}`
+
+      onUpdate(block.id, buildContent(block.type, block.content, nextText))
+
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + spaces.length
+      }, 0)
+      return
+    }
+
     if (commandMenuOpen) {
       if (event.key === 'Escape') {
-        setCommandMenuOpen(false)
-        setCommandQuery('')
-        onUpdate(block.id, buildContent(block.type, block.content, ''))
+        event.preventDefault()
+        closeCommandMenu()
         return
       }
-      if (event.key === 'Enter') {
+
+      if (event.key === 'Backspace') {
+        if (commandQuery.length === 0) {
+          event.preventDefault()
+          closeCommandMenu()
+        }
+        return
+      }
+
+      if (event.key === 'Enter' || event.key === 'NumpadEnter') {
         event.preventDefault()
-        const filtered = BLOCK_TYPES.filter(type => 
-          type.label.toLowerCase().includes(commandQuery.toLowerCase()) ||
-          type.value.includes(commandQuery.toLowerCase())
-        )
-        if (filtered.length > 0) {
-          const selected = filtered[0]
-          onChangeType(block.id, selected.value)
-          setCommandMenuOpen(false)
-          setCommandQuery('')
-          onUpdate(block.id, buildContent(selected.value, block.content, ''))
+        if (matchingBlockTypes.length > 0) {
+          await handleTypeSelection(matchingBlockTypes[0].value)
         }
         return
       }
@@ -173,9 +233,24 @@ export function Block({
         return <h3 className="text-2xl font-semibold leading-tight text-black dark:text-white">{textValue}</h3>
       case 'code':
         return (
-          <pre className="overflow-x-auto rounded-2xl border border-gray-200 bg-gray-50 p-4 font-mono text-sm leading-6 text-gray-700 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200">
-            <code>{textValue}</code>
-          </pre>
+          <div className="relative">
+            <pre className="overflow-x-auto rounded-2xl border border-gray-200 bg-gray-50 p-4 font-mono text-sm leading-6 text-gray-700 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200">
+              <code>{textValue}</code>
+            </pre>
+            {textValue && (
+              <button
+                type="button"
+                onClick={copyToClipboard}
+                className="absolute right-3 top-3 rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 opacity-0 transition-opacity hover:bg-gray-50 hover:text-gray-600 group-hover:opacity-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+                title="Copy code"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              </button>
+            )}
+          </div>
         )
       case 'image':
         return textValue ? (
@@ -219,8 +294,9 @@ export function Block({
           <input
             ref={inputRef}
             type="url"
-            value={textValue}
+            value={displayValue}
             onChange={(event) => handleChange(event.target.value)}
+            onBlur={handleInputBlur}
             onKeyDown={handleKeyDown}
             placeholder={getBlockPlaceholder(block.type)}
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-black outline-none transition-colors focus:border-black dark:border-gray-800 dark:bg-black dark:text-white dark:focus:border-white"
@@ -255,8 +331,9 @@ export function Block({
           <textarea
             ref={inputRef}
             rows={1}
-            value={commandMenuOpen ? '/' + commandQuery : commandMenuOpen ? '/' + commandQuery : textValue}
+            value={displayValue}
             onChange={(event) => handleChange(event.target.value)}
+            onBlur={handleInputBlur}
             onKeyDown={handleKeyDown}
             placeholder={getBlockPlaceholder(block.type)}
             className={getTextClassName(block.type, checked)}
@@ -265,15 +342,31 @@ export function Block({
       )
     } else {
       inputElement = (
-        <textarea
-          ref={inputRef}
-          rows={1}
-          value={textValue}
-          onChange={(event) => handleChange(event.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={getBlockPlaceholder(block.type)}
-          className={getTextClassName(block.type, checked)}
-        />
+        <div className="relative">
+          <textarea
+            ref={inputRef}
+            rows={1}
+            value={displayValue}
+            onChange={(event) => handleChange(event.target.value)}
+            onBlur={handleInputBlur}
+            onKeyDown={handleKeyDown}
+            placeholder={getBlockPlaceholder(block.type)}
+            className={getTextClassName(block.type, checked)}
+          />
+          {block.type === 'code' && textValue && (
+            <button
+              type="button"
+              onClick={copyToClipboard}
+              className="absolute right-3 top-3 rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 opacity-0 transition-opacity hover:bg-gray-50 hover:text-gray-600 group-hover:opacity-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              title="Copy code"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
+          )}
+        </div>
       )
     }
 
@@ -282,24 +375,24 @@ export function Block({
         {inputElement}
         {commandMenuOpen && (
           <div className="absolute top-full left-0 z-10 mt-1 w-64 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-800 dark:bg-black">
-            {BLOCK_TYPES.filter(type => 
-              type.label.toLowerCase().includes(commandQuery.toLowerCase()) ||
-              type.value.includes(commandQuery.toLowerCase())
-            ).map(type => (
-              <button
-                key={type.value}
-                onClick={() => {
-                  onChangeType(block.id, type.value)
-                  setCommandMenuOpen(false)
-                  setCommandQuery('')
-                  // Clear the text
-                  onUpdate(block.id, buildContent(type.value, block.content, ''))
-                }}
-                className="w-full rounded px-2 py-1 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                {type.label}
-              </button>
-            ))}
+            {matchingBlockTypes.length > 0 ? (
+              matchingBlockTypes.map((type) => (
+                <button
+                  key={type.value}
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    void handleTypeSelection(type.value)
+                  }}
+                  className="w-full rounded px-2 py-1 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <span className="block font-medium text-black dark:text-white">{type.label}</span>
+                  <span className="block text-xs text-gray-400 dark:text-gray-500">/{type.value}</span>
+                </button>
+              ))
+            ) : (
+              <p className="px-2 py-1 text-sm text-gray-400 dark:text-gray-500">No matching block type.</p>
+            )}
           </div>
         )}
       </div>
@@ -307,33 +400,33 @@ export function Block({
   }
 
   return (
-    <div 
+    <div
       className={`block-wrapper group flex gap-4 ${isDragging ? 'opacity-50' : ''}`}
       draggable={!readOnly}
-      onDragStart={(e) => {
+      onDragStart={(event) => {
         setIsDragging(true)
-        e.dataTransfer.setData('text/plain', index.toString())
+        event.dataTransfer.setData('text/plain', index.toString())
       }}
       onDragEnd={() => setIsDragging(false)}
-      onDragOver={(e) => {
-        e.preventDefault()
-        const rect = e.currentTarget.getBoundingClientRect()
+      onDragOver={(event) => {
+        event.preventDefault()
+        const rect = event.currentTarget.getBoundingClientRect()
         const midY = rect.top + rect.height / 2
-        const isAbove = e.clientY < midY
-        e.currentTarget.classList.toggle('drop-above', isAbove)
-        e.currentTarget.classList.toggle('drop-below', !isAbove)
+        const isAbove = event.clientY < midY
+        event.currentTarget.classList.toggle('drop-above', isAbove)
+        event.currentTarget.classList.toggle('drop-below', !isAbove)
       }}
-      onDragLeave={(e) => {
-        e.currentTarget.classList.remove('drop-above', 'drop-below')
+      onDragLeave={(event) => {
+        event.currentTarget.classList.remove('drop-above', 'drop-below')
       }}
-      onDrop={(e) => {
-        e.preventDefault()
-        e.currentTarget.classList.remove('drop-above', 'drop-below')
-        const draggedIndex = parseInt(e.dataTransfer.getData('text/plain'))
+      onDrop={(event) => {
+        event.preventDefault()
+        event.currentTarget.classList.remove('drop-above', 'drop-below')
+        const draggedIndex = parseInt(event.dataTransfer.getData('text/plain'))
         if (draggedIndex === index) return
-        const rect = e.currentTarget.getBoundingClientRect()
+        const rect = event.currentTarget.getBoundingClientRect()
         const midY = rect.top + rect.height / 2
-        const isAbove = e.clientY < midY
+        const isAbove = event.clientY < midY
         const targetIndex = isAbove ? index : index + 1
         if (onMove) {
           onMove(draggedIndex, targetIndex)
@@ -349,7 +442,9 @@ export function Block({
           <div className="mb-2 flex items-center gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
             <select
               value={block.type}
-              onChange={(event) => onChangeType(block.id, event.target.value)}
+              onChange={(event) => {
+                void handleTypeSelection(event.target.value)
+              }}
               className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 outline-none transition-colors hover:border-gray-300 focus:border-black dark:border-gray-800 dark:bg-black dark:text-gray-300 dark:hover:border-gray-700 dark:focus:border-white"
             >
               {BLOCK_TYPES.map((typeOption) => (
